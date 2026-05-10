@@ -29,13 +29,14 @@ jobs:
         env:
           PGPASSWORD: ${{ secrets.DB_PASSWORD }}
         run: |
-          mkdir backups
+          mkdir -p backups
           
-          pg_dump \
+          /usr/lib/postgresql/17/bin/pg_dump \
             -h ${{ secrets.DB_HOST }} \
             -p 6543 \
             -U ${{ secrets.DB_USER }} \
             -d postgres \
+            -v \
             -F c \
             -f backups/backup_$(date +%Y%m%d_%H%M%S).backup
 
