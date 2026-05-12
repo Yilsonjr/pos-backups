@@ -14,16 +14,25 @@ jobs:
 
       - name: Guardar en Repositorio Privado
         env:
-          # Esto le da permiso al comando git push para escribir
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           git config --local user.email "backup-bot@logospos.com"
           git config --local user.name "LogosPOS Backup System"
-          git add backups/
-          git commit -m "Backup Global Completo - $FECHA_BACKUP" || echo "No hay cambios para subir"
-          # Usamos la autenticación de GitHub para subir el archivo
-          git push https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git HEAD:main
-
+          
+          # Verificamos si la carpeta existe antes de agregar
+          if [ -d "backups" ]; then
+            git add backups/
+            # Solo hacemos commit y push si hay cambios reales detectados por git
+            if git diff --staged --quiet; then
+              echo "No hay cambios nuevos para respaldar hoy."
+            else
+              git commit -m "Backup Global Completo - $FECHA_BACKUP"
+              git push https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git HEAD:main
+            fi
+          else
+            echo "Error: La carpeta de backups no se creó."
+            exit 1
+          fi
       - name: Procesar Proyectos Activos
         env:
           # Mapea aquí tus secretos
