@@ -16,7 +16,8 @@ jobs:
         run: |
           # Añadir el repositorio oficial de PostgreSQL para conseguir la versión 17
           sudo apt-get update
-          sudo apt-get install -y wget gnupg2
+          # Instalamos lsb-release para que el script detecte la versión de Ubuntu (ej. jammy, noble)
+          sudo apt-get install -y wget gnupg2 lsb-release
           wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo apt-key add -
           echo "deb http://apt.postgresql.org/pub/repos/apt/ $(lsb_release -cs)-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list
           sudo apt-get update
@@ -29,7 +30,6 @@ jobs:
           DB_URL_RESTAURANT: ${{ secrets.DB_URL_RESTAURANT }}
         run: |
           FECHA=$(date +%Y-%m-%d)
-          # Guardamos la fecha para el siguiente paso de Git
           echo "FECHA_BACKUP=$FECHA" >> $GITHUB_ENV
           
           jq -c '.proyectos[] | select(.activo == true)' config.json | while read proy; do
