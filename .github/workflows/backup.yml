@@ -12,41 +12,33 @@ jobs:
       - name: Checkout del repositorio
         uses: actions/checkout@v4
 
-      - name: Guardar en Repositorio Privado
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # PASO 1: Instalar herramientas necesarias (v17 para Supabase)
+      - name: Instalar Postgres Client 17
         run: |
-          git config --local user.email "backup-bot@logospos.com"
-          git config --local user.name "LogosPOS Backup System"
-          
-          # Verificamos si la carpeta existe antes de agregar
-          if [ -d "backups" ]; then
-            git add backups/
-            # Solo hacemos commit y push si hay cambios reales detectados por git
-            if git diff --staged --quiet; then
-              echo "No hay cambios nuevos para respaldar hoy."
-            else
-              git commit -m "Backup Global Completo - $FECHA_BACKUP"
-              git push https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git HEAD:main
-            fi
-          else
-            echo "Error: La carpeta de backups no se creó."
-            exit 1
-          fi
+          sudo apt-get update
+          sudo apt-get install -y wget gnupg2 lsb-release
+          wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo apt-key add -
+          echo "deb http://apt.postgresql.org/pub/repos/apt/ $(lsb_release -cs)-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client-17
+
+      # PASO 2: Crear los respaldos desde Supabase
       - name: Procesar Proyectos Activos
         env:
-          # Mapea aquí tus secretos
           DB_URL_RESTAURANT: ${{ secrets.DB_URL_RESTAURANT }}
         run: |
           FECHA=$(date +%Y-%m-%d)
           echo "FECHA_BACKUP=$FECHA" >> $GITHUB_ENV
+          
+          # Aseguramos que la carpeta exista
+          mkdir -p backups
           
           jq -c '.proyectos[] | select(.activo == true)' config.json | while read proy; do
             ID=$(echo $proy | jq -r '.id')
             SECRET_NAME=$(echo $proy | jq -r '.secret_name')
             URL_CONEXION=${!SECRET_NAME}
             
-            echo "Iniciando respaldo completo para: $ID"
+            echo "Iniciando respaldo para: $ID"
             
             if [ -z "$URL_CONEXION" ]; then
               echo "Error: El secreto $SECRET_NAME no existe."
@@ -54,17 +46,28 @@ jobs:
             fi
 
             mkdir -p "backups/$ID"
-            # Extraemos el host de la URL para forzar la resolución IPv4
             HOST=$(echo "$URL_CONEXION" | sed -e 's|.*@||' -e 's|:.*||')
-            pg_dump --host=$HOST "$URL_CONEXION" > "backups/$ID/${ID}_full_$FECHA.sql"
+            
+            # Ejecución del dump
+            pg_dump -h "$HOST" "$URL_CONEXION" > "backups/$ID/${ID}_full_$FECHA.sql"
             echo "Respaldo de $ID completado."
           done
 
+      # PASO 3: Guardar los archivos resultantes en el repositorio
       - name: Guardar en Repositorio Privado
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           git config --local user.email "backup-bot@logospos.com"
           git config --local user.name "LogosPOS Backup System"
-          git add backups/
-          # Usamos la variable de entorno directa de Linux ($FECHA_BACKUP)
-          git commit -m "Backup Global Completo - $FECHA_BACKUP" || echo "No hay cambios para subir"
-          git push
+          
+          # Agregamos los archivos creados
+          if [ -d "backups" ]; then
+            git add backups/
+            if git diff --staged --quiet; then
+              echo "No hay cambios nuevos hoy."
+            else
+              git commit -m "Backup Global Completo - $FECHA_BACKUP"
+              git push https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git HEAD:main
+            fi
+          fi
