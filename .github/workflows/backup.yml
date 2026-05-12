@@ -1,47 +1,53 @@
-name: Supabase Backup
+name: "LogosPOS: Respaldo de Datos Completo"
 
 on:
   schedule:
-    - cron: '0 3 * * *' # Todos los dias 3AM UTC
-  workflow_dispatch:
+    - cron: '0 5 * * *' # 5:00 AM UTC
+  workflow_dispatch:   # Ejecución manual
 
 jobs:
-  backup:
+  run_full_dump:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout repository
+      - name: Checkout del repositorio
         uses: actions/checkout@v4
 
-      - name: Install PostgreSQL 17 Client
+      - name: Instalar Postgres Client
         run: |
           sudo apt-get update
-          sudo apt-get install -y wget gnupg
-      
-          wget -qO- https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo gpg --dearmor -o /usr/share/keyrings/postgresql.gpg
-      
-          echo "deb [signed-by=/usr/share/keyrings/postgresql.gpg] http://apt.postgresql.org/pub/repos/apt noble-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list
-      
-          sudo apt-get update
-          sudo apt-get install -y postgresql-client-17
+          sudo apt-get install -y postgresql-client
 
-      - name: Create backup
+      - name: Procesar Proyectos Activos
         env:
-          PGPASSWORD: ${{ secrets.DB_PASSWORD }}
+          # Mapea aquí tus secretos
+          DB_URL_RESTAURANT: ${{ secrets.DB_URL_RESTAURANT }}
         run: |
-          mkdir -p backups
+          FECHA=$(date +%Y-%m-%d)
+          # Guardamos la fecha para el siguiente paso de Git
+          echo "FECHA_BACKUP=$FECHA" >> $GITHUB_ENV
           
-          /usr/lib/postgresql/17/bin/pg_dump \
-            -h ${{ secrets.DB_HOST }} \
-            -p 6543 \
-            -U ${{ secrets.DB_USER }} \
-            -d postgres \
-            -v \
-            -F c \
-            -f backups/backup_$(date +%Y%m%d_%H%M%S).backup
+          jq -c '.proyectos[] | select(.activo == true)' config.json | while read proy; do
+            ID=$(echo $proy | jq -r '.id')
+            SECRET_NAME=$(echo $proy | jq -r '.secret_name')
+            URL_CONEXION=${!SECRET_NAME}
+            
+            echo "Iniciando respaldo completo para: $ID"
+            
+            if [ -z "$URL_CONEXION" ]; then
+              echo "Error: El secreto $SECRET_NAME no existe."
+              continue
+            fi
 
-      - name: Upload backup artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: supabase-backup
-          path: backups/
+            mkdir -p "backups/$ID"
+            pg_dump "$URL_CONEXION" > "backups/$ID/${ID}_full_$FECHA.sql"
+            echo "Respaldo de $ID completado."
+          done
+
+      - name: Guardar en Repositorio Privado
+        run: |
+          git config --local user.email "backup-bot@logospos.com"
+          git config --local user.name "LogosPOS Backup System"
+          git add backups/
+          # Usamos la variable de entorno directa de Linux ($FECHA_BACKUP)
+          git commit -m "Backup Global Completo - $FECHA_BACKUP" || echo "No hay cambios para subir"
+          git push
