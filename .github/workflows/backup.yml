@@ -39,7 +39,9 @@ jobs:
             fi
 
             mkdir -p "backups/$ID"
-            pg_dump "$URL_CONEXION" > "backups/$ID/${ID}_full_$FECHA.sql"
+            # Extraemos el host de la URL para forzar la resolución IPv4
+            HOST=$(echo "$URL_CONEXION" | sed -e 's|.*@||' -e 's|:.*||')
+            pg_dump --host=$HOST "$URL_CONEXION" > "backups/$ID/${ID}_full_$FECHA.sql"
             echo "Respaldo de $ID completado."
           done
 
