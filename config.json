@@ -1,0 +1,9 @@
+{
+  "proyectos": [
+    {
+      "id": "pos_restaurant_main",
+      "secret_name": "DB_URL_RESTAURANT",
+      "activo": true
+    }
+  ]
+}
